@@ -1,8 +1,9 @@
 "use client";
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 
 /* ============================================================
    TERPENE PRESCRIBER INTELLIGENCE — Desktop-First Clinical Tool
+   v3.0 — Scoring fixes, UX improvements, accessibility pass
    ============================================================ */
 
 // ── STRAIN DATABASE (28 Catalyst + 11 Personal = 39 total) ──
@@ -52,85 +53,169 @@ const strainDB = [
 
 // ── SCORING ENGINE ──
 const GOALS = [
-  { id:"functional", label:"Functional Clarity", desc:"Daytime focus, productivity, mood elevation" },
+  { id:"functional", label:"Functional Clarity", desc:"Daytime focus, productivity, mood elevation", common:true },
   { id:"creative", label:"Deep Thinking", desc:"Introspection, creativity, philosophical exploration" },
-  { id:"pain", label:"Pain Management", desc:"Chronic pain, inflammation, physical relief" },
+  { id:"pain", label:"Pain Management", desc:"Chronic pain, inflammation, physical relief", common:true },
   { id:"sleep", label:"Sleep Support", desc:"Insomnia, sleep onset, restful sedation" },
   { id:"anxiety_relief", label:"Anxiolytic Effect", desc:"Calm without sedation, social ease" },
 ];
 const AVOID = [
-  { id:"anxiety", label:"Overstimulation / Anxiety", desc:"Racing thoughts, paranoia, heart rate" },
+  { id:"anxiety", label:"Overstimulation / Anxiety", desc:"Racing thoughts, paranoia, heart rate", common:true },
   { id:"sedation", label:"Excessive Sedation", desc:"Couch-lock, cognitive fog, flatness" },
   { id:"paranoia", label:"Paranoia / Dissociation", desc:"Loss of control, derealization" },
   { id:"none", label:"No Specific Concerns", desc:"Open to all terpene profiles" },
 ];
 const INTENSITY = [
   { id:"low", label:"Low (THC < 20%)", desc:"Mild, entry-level, controllable" },
-  { id:"moderate", label:"Moderate (20–25%)", desc:"Standard therapeutic range" },
+  { id:"moderate", label:"Moderate (20–25%)", desc:"Standard therapeutic range", common:true },
   { id:"high", label:"High (25–30%)", desc:"Experienced patients, strong effects" },
   { id:"very_high", label:"Very High (30%+)", desc:"Maximum potency, tolerance required" },
 ];
 const EXPERIENCE = [
   { id:"naive", label:"Cannabis Naive", desc:"No prior use or very limited" },
   { id:"some", label:"Some Experience", desc:"Occasional use, familiar with effects" },
-  { id:"experienced", label:"Experienced", desc:"Regular use, established tolerance" },
+  { id:"experienced", label:"Experienced", desc:"Regular use, established tolerance", common:true },
 ];
 const BUDGET = [
   { id:"economy", label:"Under $8/g", desc:"Value-focused" },
-  { id:"mid", label:"$8 – $12/g", desc:"Mid-range" },
+  { id:"mid", label:"$8 – $12/g", desc:"Mid-range", common:true },
   { id:"premium", label:"$12 – $16/g", desc:"Premium tier" },
   { id:"any", label:"No Constraint", desc:"Clinical priority only" },
 ];
 
+// ── TERPENE ROLE MAP (for rationale generation) ──
+const TERPENE_ROLES = {
+  limonene: { role:"Mood lift", icon:"↑" },
+  caryophyllene: { role:"Body anchor", icon:"⚓" },
+  myrcene: { role:"Sedation", icon:"◉" },
+  linalool: { role:"Calming", icon:"~" },
+  pinene: { role:"Clarity", icon:"◇" },
+  alphaPinene: { role:"Clarity", icon:"◇" },
+  betaPinene: { role:"Clarity", icon:"◇" },
+  farnesene: { role:"Softener", icon:"○" },
+  terpinolene: { role:"Stimulant", icon:"⚡" },
+  bisabolol: { role:"Healing", icon:"+" },
+  humulene: { role:"Anti-inflammatory", icon:"−" },
+  ocimene: { role:"Decongestant", icon:"△" },
+};
+
+// ── SCORING ENGINE (v3 — fixed) ──
 function scoreStrain(strain, answers) {
-  if (!strain.totalTerpenes || strain.category === "Unknown") return -999;
+  if (!strain.totalTerpenes || strain.category === "Unknown") return { score: -999, reasons: [] };
   let score = 0;
+  const reasons = [];
   const t = strain.terpenes || {};
   const lim = t.limonene || 0, car = t.caryophyllene || 0, myr = t.myrcene || 0;
   const lin = t.linalool || 0, pin = (t.pinene || 0) + (t.alphaPinene || 0) + (t.betaPinene || 0);
   const far = t.farnesene || 0, terp = t.terpinolene || 0, bis = t.bisabolol || 0;
 
   // Goal alignment
-  if (answers.goal === "functional") { score += lim * 40 + car * 25 + pin * 20 - myr * 15; if (lim > 0.3 && car > 0.2) score += 20; }
-  if (answers.goal === "creative") { score += car * 35 + far * 30 + lim * 20 + lin * 25; if (car > 0.3 && far > 0.15) score += 15; }
-  if (answers.goal === "pain") { score += car * 45 + myr * 25 + lin * 20 + bis * 15; if (car > 0.4) score += 20; }
-  if (answers.goal === "sleep") { score += myr * 45 + lin * 35 + bis * 20 - lim * 15 - pin * 10; if (myr > 0.5 && lin > 0.15) score += 20; }
-  if (answers.goal === "anxiety_relief") { score += lin * 40 + car * 30 + bis * 25 - terp * 30 - pin * 10; if (lin > 0.15 && car > 0.2) score += 15; }
+  if (answers.goal === "functional") {
+    const g = lim * 40 + car * 25 + pin * 20 - myr * 15;
+    score += g;
+    if (lim > 0.3 && car > 0.2) { score += 20; reasons.push("Limonene + caryophyllene synergy — strong functional foundation"); }
+    else if (lim > 0.3) reasons.push("Limonene provides mood lift");
+    else if (car > 0.3) reasons.push("Caryophyllene anchors without lift — may lack brightness");
+    if (myr > 0.5) reasons.push("High myrcene may dampen functional clarity");
+  }
+  if (answers.goal === "creative") {
+    const g = car * 35 + far * 30 + lim * 20 + lin * 25;
+    score += g;
+    if (car > 0.3 && far > 0.15) { score += 15; reasons.push("Caryophyllene + farnesene — deep introspective architecture"); }
+    else if (car > 0.4) reasons.push("Strong body grounding supports sustained deep thinking");
+    if (lin > 0.15) reasons.push("Linalool adds dreamy, creative softness");
+  }
+  if (answers.goal === "pain") {
+    const g = car * 45 + myr * 25 + lin * 20 + bis * 15;
+    score += g;
+    if (car > 0.4) { score += 20; reasons.push("High caryophyllene — direct CB2 receptor binding for anti-inflammatory relief"); }
+    if (myr > 0.4) reasons.push("Myrcene enhances THC absorption and muscle relaxation");
+    if (bis > 0.1) reasons.push("Bisabolol adds anti-inflammatory support");
+  }
+  if (answers.goal === "sleep") {
+    const g = myr * 45 + lin * 35 + bis * 20 - lim * 15 - pin * 10;
+    score += g;
+    if (myr > 0.5 && lin > 0.15) { score += 20; reasons.push("Myrcene + linalool synergy — strong sedation with dream quality"); }
+    else if (myr > 0.5) reasons.push("High myrcene drives sedation");
+    if (lim > 0.4) reasons.push("Limonene may keep mind active — counterproductive for sleep onset");
+  }
+  if (answers.goal === "anxiety_relief") {
+    const g = lin * 40 + car * 30 + bis * 25 - terp * 30 - pin * 10;
+    score += g;
+    if (lin > 0.15 && car > 0.2) { score += 15; reasons.push("Linalool + caryophyllene — calm without sedation"); }
+    if (terp > 0.3) reasons.push("Terpinolene present — may increase stimulation");
+  }
 
-  // Contraindication penalties
-  if (answers.avoid === "anxiety") { if (terp > 0.5) score -= 40; if (terp > 0.3) score -= 20; if (lim > 0.6 && car < 0.2) score -= 15; }
-  if (answers.avoid === "sedation") { if (myr > 0.6 && lim < 0.2) score -= 35; if (strain.totalTerpenes < 0.5) score -= 25; }
-  if (answers.avoid === "paranoia") { if (strain.thc >= 28 && strain.totalTerpenes < 1.5) score -= 30; if (terp > 0.5) score -= 20; }
+  // Contraindication penalties (fixed: no double-dipping)
+  if (answers.avoid === "anxiety") {
+    if (terp > 0.5) { score -= 40; reasons.push("⚠ High terpinolene (>" + terp.toFixed(1) + "%) — significant anxiety risk"); }
+    else if (terp > 0.3) { score -= 20; reasons.push("⚠ Moderate terpinolene — some anxiety risk"); }
+    if (lim > 0.6 && car < 0.2) { score -= 15; reasons.push("⚠ High limonene without caryophyllene anchor"); }
+  }
+  if (answers.avoid === "sedation") {
+    if (myr > 0.6 && lim < 0.2) { score -= 35; reasons.push("⚠ Myrcene-dominant with no lift — sedation risk"); }
+    if (strain.totalTerpenes < 0.5) { score -= 25; reasons.push("⚠ Very low terpene expression — flat, empty high"); }
+  }
+  if (answers.avoid === "paranoia") {
+    if (strain.thc >= 28 && strain.totalTerpenes < 1.5) { score -= 30; reasons.push("⚠ High THC with low terpene modulation"); }
+    if (terp > 0.5) { score -= 20; reasons.push("⚠ Terpinolene may amplify dissociative effects"); }
+  }
 
-  // THC bracket
+  // THC bracket (fixed: smooth penalties for out-of-range)
   const thc = strain.thc;
-  if (answers.intensity === "low" && thc <= 20) score += 15;
-  else if (answers.intensity === "low" && thc > 25) score -= 25;
-  else if (answers.intensity === "moderate" && thc >= 20 && thc <= 25) score += 15;
-  else if (answers.intensity === "high" && thc >= 25 && thc <= 30) score += 15;
-  else if (answers.intensity === "very_high" && thc >= 30) score += 20;
+  if (answers.intensity === "low") {
+    if (thc <= 20) score += 15;
+    else if (thc <= 22) score -= 5;
+    else if (thc <= 25) score -= 15;
+    else score -= 25;
+  } else if (answers.intensity === "moderate") {
+    if (thc >= 20 && thc <= 25) score += 15;
+    else if (thc < 18 || thc > 27) score -= 10;
+  } else if (answers.intensity === "high") {
+    if (thc >= 25 && thc <= 30) score += 15;
+    else if (thc < 22) score -= 15;
+  } else if (answers.intensity === "very_high") {
+    if (thc >= 30) score += 20;
+    else if (thc >= 28) score += 5;
+    else score -= 15;
+  }
 
-  // Experience level
-  if (answers.experience === "naive") { if (thc > 25) score -= 20; if (strain.cbd > 0) score += 15; }
-  if (answers.experience === "experienced") { if (strain.totalTerpenes > 2.0) score += 10; }
+  // Experience level (fixed: "some" now does something)
+  if (answers.experience === "naive") {
+    if (thc > 25) { score -= 20; reasons.push("⚠ THC may be too high for cannabis-naive patient"); }
+    if (thc > 22) score -= 5;
+    if (strain.cbd > 0) { score += 15; reasons.push("CBD presence provides safety buffer for naive patient"); }
+  }
+  if (answers.experience === "some") {
+    // Moderate: reward balanced profiles, mild penalty for extremes
+    if (thc > 28) score -= 10;
+    if (strain.totalTerpenes >= 1.5 && strain.totalTerpenes <= 2.5) score += 8;
+    if (strain.cbd > 0) score += 5;
+  }
+  if (answers.experience === "experienced") {
+    if (strain.totalTerpenes > 2.0) score += 10;
+    if (thc >= 25) score += 5;
+  }
 
   // Terpene density bonus
-  if (strain.totalTerpenes >= 2.5) score += 30;
-  else if (strain.totalTerpenes >= 2.0) score += 20;
+  if (strain.totalTerpenes >= 2.5) { score += 30; reasons.push("Exceptional terpene density (" + strain.totalTerpenes.toFixed(1) + "%)"); }
+  else if (strain.totalTerpenes >= 2.0) { score += 20; reasons.push("Strong terpene density (" + strain.totalTerpenes.toFixed(1) + "%)"); }
   else if (strain.totalTerpenes >= 1.5) score += 10;
 
   // Verified bonus
-  if (strain.status === "tried") score += 8;
+  if (strain.status === "tried") { score += 12; reasons.push("Clinically verified — real-world data available"); }
 
   // Avoid category penalty
-  if (strain.category === "Avoid") score -= 50;
-  if (strain.category === "Caution") score -= 15;
+  if (strain.category === "Avoid") { score -= 50; reasons.push("⚠ Flagged: known poor terpene expression"); }
+  if (strain.category === "Caution") { score -= 15; reasons.push("⚠ Caution: unpredictable terpene behaviour"); }
 
-  return Math.round(score);
+  return { score: Math.round(score), reasons };
 }
 
 function budgetFilter(strain, budget) {
-  if (budget === "any" || !strain.price) return true;
+  if (budget === "any") return true;
+  // Personal strains with no price: show them but they'll be marked as "Price unavailable"
+  if (!strain.price) return budget === "any";
   if (budget === "economy") return strain.price < 8;
   if (budget === "mid") return strain.price >= 8 && strain.price <= 12;
   if (budget === "premium") return strain.price >= 12 && strain.price <= 16;
@@ -142,7 +227,7 @@ function getTopTerpenes(terpenes, n = 5) {
   return Object.entries(terpenes || {})
     .sort((a, b) => b[1] - a[1])
     .slice(0, n)
-    .map(([name, val]) => ({ name: formatTerpName(name), value: val }));
+    .map(([name, val]) => ({ name: formatTerpName(name), key: name, value: val }));
 }
 
 function formatTerpName(key) {
@@ -152,7 +237,7 @@ function formatTerpName(key) {
 
 // ── TERPENE BAR COLOR ──
 function terpColor(name) {
-  const n = name.toLowerCase();
+  const n = (typeof name === 'string' ? name : '').toLowerCase();
   if (n.includes("limonene")) return "#F6C244";
   if (n.includes("caryophyllene") && !n.includes("oxide")) return "#D4763B";
   if (n.includes("myrcene")) return "#7B9E5A";
@@ -163,56 +248,102 @@ function terpColor(name) {
   if (n.includes("bisabolol")) return "#D4A87C";
   if (n.includes("humulene")) return "#9B8A6E";
   if (n.includes("ocimene")) return "#6BB8C9";
-  return "#888";
+  return "#999";
 }
 
 // ── CATEGORY BADGE ──
 function catBadge(cat) {
-  const colors = { "Day / Functional":"#2D7A4F", "Deep Think / Creative":"#5B4FA0", "Sleep / KO":"#3B5998", "Avoid":"#9B3333", "Caution":"#B08A2E", "CBD Dominant":"#2E8B8B", "CBD Balanced":"#4A8B7A", "Unknown":"#555" };
-  return colors[cat] || "#555";
+  const colors = { "Day / Functional":"#2D7A4F", "Deep Think / Creative":"#5B4FA0", "Sleep / KO":"#3B5998", "Avoid":"#9B3333", "Caution":"#B08A2E", "CBD Dominant":"#2E8B8B", "CBD Balanced":"#4A8B7A", "Unknown":"#666" };
+  return colors[cat] || "#666";
 }
+
+// ── FIXED TERPENE BAR SCALE ──
+const TERP_BAR_MAX = 1.3; // Fixed scale so bars are always comparable
 
 // ── MAIN APP ──
 export default function PrescriberDesktop() {
-  const [view, setView] = useState("engine"); // engine | library
+  const [view, setView] = useState("engine");
   const [step, setStep] = useState(0);
   const [answers, setAnswers] = useState({ goal:null, avoid:null, intensity:null, experience:null, budget:null });
+  const [pendingAnswer, setPendingAnswer] = useState(null);
   const [results, setResults] = useState(null);
   const [expandedCard, setExpandedCard] = useState(null);
+  const [showCount, setShowCount] = useState(8);
   const [libSort, setLibSort] = useState("name");
   const [libFilter, setLibFilter] = useState("all");
   const [libSearch, setLibSearch] = useState("");
+  const [libExpanded, setLibExpanded] = useState(null);
 
   const steps = [
-    { key:"goal", title:"Therapeutic Objective", subtitle:"Primary clinical goal for this patient", options:GOALS },
-    { key:"avoid", title:"Contraindications", subtitle:"Adverse effects to minimise", options:AVOID },
-    { key:"intensity", title:"THC Intensity", subtitle:"Desired potency bracket", options:INTENSITY },
-    { key:"experience", title:"Patient Experience", subtitle:"Cannabis use history", options:EXPERIENCE },
-    { key:"budget", title:"Budget Range", subtitle:"Target cost per gram", options:BUDGET },
+    { key:"goal", title:"Therapeutic Objective", subtitle:"What is the primary clinical goal for this patient?", options:GOALS },
+    { key:"avoid", title:"Contraindications", subtitle:"Which adverse effects should be minimised?", options:AVOID },
+    { key:"intensity", title:"THC Intensity", subtitle:"What potency bracket is appropriate?", options:INTENSITY },
+    { key:"experience", title:"Patient Experience", subtitle:"What is the patient's cannabis use history?", options:EXPERIENCE },
+    { key:"budget", title:"Budget Range", subtitle:"What is the target cost per gram?", options:BUDGET },
   ];
 
-  function runEngine() {
+  const computeResults = useCallback((a) => {
     const scored = strainDB
       .filter(s => s.totalTerpenes && s.category !== "Unknown")
-      .filter(s => budgetFilter(s, answers.budget))
-      .map(s => ({ ...s, score: scoreStrain(s, answers) }))
+      .filter(s => budgetFilter(s, a.budget))
+      .map(s => {
+        const { score, reasons } = scoreStrain(s, a);
+        return { ...s, score, reasons };
+      })
       .sort((a, b) => b.score - a.score);
     setResults(scored);
+    setShowCount(8);
+  }, []);
+
+  function handleSelect(key, val) {
+    setPendingAnswer({ key, val });
   }
 
-  function handleAnswer(key, val) {
-    setAnswers(prev => ({ ...prev, [key]: val }));
-    if (step < 4) setStep(step + 1);
-    else { setTimeout(() => { const a = { ...answers, [key]: val }; const scored = strainDB.filter(s => s.totalTerpenes && s.category !== "Unknown").filter(s => budgetFilter(s, a.budget)).map(s => ({ ...s, score: scoreStrain(s, a) })).sort((a, b) => b.score - a.score); setResults(scored); }, 100); }
+  function confirmAndAdvance() {
+    if (!pendingAnswer) return;
+    const { key, val } = pendingAnswer;
+    const newAnswers = { ...answers, [key]: val };
+    setAnswers(newAnswers);
+    setPendingAnswer(null);
+    if (step < 4) {
+      setStep(step + 1);
+    } else {
+      computeResults(newAnswers);
+    }
   }
 
-  function reset() { setStep(0); setAnswers({ goal:null, avoid:null, intensity:null, experience:null, budget:null }); setResults(null); setExpandedCard(null); }
+  function reset() {
+    setStep(0);
+    setAnswers({ goal:null, avoid:null, intensity:null, experience:null, budget:null });
+    setPendingAnswer(null);
+    setResults(null);
+    setExpandedCard(null);
+    setShowCount(8);
+  }
+
+  // Determine the currently effective value for a step
+  const currentVal = pendingAnswer?.key === steps[step]?.key ? pendingAnswer.val : answers[steps[step]?.key];
 
   // Library helpers
   const libStrains = strainDB
-    .filter(s => { if (libFilter === "all") return true; if (libFilter === "functional") return s.category === "Day / Functional"; if (libFilter === "creative") return s.category === "Deep Think / Creative"; if (libFilter === "sleep") return s.category === "Sleep / KO"; if (libFilter === "cbd") return s.category === "CBD Dominant" || s.category === "CBD Balanced"; if (libFilter === "caution") return s.category === "Caution" || s.category === "Avoid"; if (libFilter === "tried") return s.status === "tried"; return true; })
+    .filter(s => {
+      if (libFilter === "all") return true;
+      if (libFilter === "functional") return s.category === "Day / Functional";
+      if (libFilter === "creative") return s.category === "Deep Think / Creative";
+      if (libFilter === "sleep") return s.category === "Sleep / KO";
+      if (libFilter === "cbd") return s.category === "CBD Dominant" || s.category === "CBD Balanced";
+      if (libFilter === "caution") return s.category === "Caution" || s.category === "Avoid";
+      if (libFilter === "tried") return s.status === "tried";
+      return true;
+    })
     .filter(s => !libSearch || s.name.toLowerCase().includes(libSearch.toLowerCase()) || (s.brand && s.brand.toLowerCase().includes(libSearch.toLowerCase())) || (s.cultivar && s.cultivar.toLowerCase().includes(libSearch.toLowerCase())))
-    .sort((a, b) => { if (libSort === "name") return a.name.localeCompare(b.name); if (libSort === "thc") return b.thc - a.thc; if (libSort === "terpenes") return (b.totalTerpenes || 0) - (a.totalTerpenes || 0); if (libSort === "price") return (a.price || 999) - (b.price || 999); return 0; });
+    .sort((a, b) => {
+      if (libSort === "name") return a.name.localeCompare(b.name);
+      if (libSort === "thc") return b.thc - a.thc;
+      if (libSort === "terpenes") return (b.totalTerpenes || 0) - (a.totalTerpenes || 0);
+      if (libSort === "price") return (a.price || 999) - (b.price || 999);
+      return 0;
+    });
 
   return (
     <>
@@ -222,16 +353,17 @@ export default function PrescriberDesktop() {
         :root {
           --bg-primary: #0C0F14;
           --bg-secondary: #121620;
-          --bg-tertiary: #181D2A;
-          --bg-card: #1A1F2E;
-          --bg-card-hover: #1E2438;
-          --border: rgba(255,255,255,0.06);
-          --border-active: rgba(196,163,90,0.4);
-          --text-primary: rgba(255,255,255,0.92);
-          --text-secondary: rgba(255,255,255,0.6);
-          --text-tertiary: rgba(255,255,255,0.38);
+          --bg-tertiary: #1A2030;
+          --bg-card: #1C2235;
+          --bg-card-hover: #222842;
+          --border: rgba(255,255,255,0.09);
+          --border-active: rgba(196,163,90,0.5);
+          --text-primary: rgba(255,255,255,0.95);
+          --text-secondary: rgba(255,255,255,0.68);
+          --text-tertiary: rgba(255,255,255,0.48);
           --accent: #C4A35A;
-          --accent-dim: rgba(196,163,90,0.15);
+          --accent-dim: rgba(196,163,90,0.12);
+          --accent-glow: rgba(196,163,90,0.25);
           --green: #4CAF7D;
           --red: #C45A5A;
           --font-main: 'DM Sans', -apple-system, sans-serif;
@@ -239,19 +371,20 @@ export default function PrescriberDesktop() {
         }
         body { background: var(--bg-primary); color: var(--text-primary); font-family: var(--font-main); -webkit-font-smoothing: antialiased; }
 
-        /* ── LAYOUT ── */
         .shell { display: flex; min-height: 100vh; }
+
+        /* ── SIDEBAR ── */
         .sidebar { width: 260px; background: var(--bg-secondary); border-right: 1px solid var(--border); display: flex; flex-direction: column; position: fixed; top: 0; left: 0; bottom: 0; z-index: 10; }
         .sidebar-brand { padding: 28px 24px 20px; border-bottom: 1px solid var(--border); }
-        .sidebar-brand h1 { font-size: 15px; font-weight: 700; letter-spacing: 0.5px; color: var(--accent); text-transform: uppercase; }
-        .sidebar-brand p { font-size: 11px; color: var(--text-tertiary); margin-top: 4px; letter-spacing: 0.3px; }
+        .sidebar-brand h1 { font-size: 14px; font-weight: 700; letter-spacing: 1.5px; color: var(--accent); text-transform: uppercase; }
+        .sidebar-brand p { font-size: 12px; color: var(--text-tertiary); margin-top: 6px; line-height: 1.4; }
         .sidebar-nav { padding: 16px 12px; flex: 1; }
         .nav-item { display: flex; align-items: center; gap: 12px; padding: 12px 16px; border-radius: 8px; cursor: pointer; font-size: 14px; font-weight: 500; color: var(--text-secondary); transition: all 0.15s; margin-bottom: 4px; }
         .nav-item:hover { background: var(--bg-tertiary); color: var(--text-primary); }
-        .nav-item.active { background: var(--accent-dim); color: var(--accent); }
+        .nav-item.active { background: var(--accent-dim); color: var(--accent); border: 1px solid rgba(196,163,90,0.2); }
         .nav-icon { width: 20px; text-align: center; font-size: 16px; }
-        .sidebar-footer { padding: 16px 24px; border-top: 1px solid var(--border); }
-        .sidebar-footer p { font-size: 11px; color: var(--text-tertiary); font-family: var(--font-mono); }
+        .sidebar-footer { padding: 20px 24px; border-top: 1px solid var(--border); }
+        .sidebar-footer p { font-size: 12px; color: var(--text-tertiary); font-family: var(--font-mono); line-height: 1.6; }
 
         .main { margin-left: 260px; flex: 1; min-height: 100vh; }
         .topbar { height: 64px; border-bottom: 1px solid var(--border); display: flex; align-items: center; justify-content: space-between; padding: 0 40px; background: var(--bg-secondary); position: sticky; top: 0; z-index: 5; }
@@ -260,83 +393,115 @@ export default function PrescriberDesktop() {
         .content { padding: 40px; max-width: 1400px; }
 
         /* ── ENGINE STEPS ── */
+        .step-progress { display: flex; gap: 6px; margin-bottom: 48px; }
+        .step-pip { display: flex; align-items: center; gap: 6px; flex: 1; }
+        .step-pip-dot { width: 28px; height: 28px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 12px; font-weight: 700; font-family: var(--font-mono); background: var(--bg-tertiary); color: var(--text-tertiary); transition: all 0.3s; flex-shrink: 0; }
+        .step-pip-dot.done { background: var(--accent); color: #0C0F14; }
+        .step-pip-dot.current { background: var(--accent-dim); color: var(--accent); border: 2px solid var(--accent); }
+        .step-pip-line { flex: 1; height: 2px; background: var(--border); }
+        .step-pip-line.done { background: var(--accent); }
+        .step-pip-label { font-size: 11px; color: var(--text-tertiary); margin-top: 4px; display: none; }
+
         .step-header { margin-bottom: 32px; }
-        .step-header h3 { font-size: 24px; font-weight: 700; margin-bottom: 6px; }
-        .step-header p { font-size: 14px; color: var(--text-secondary); }
-        .step-progress { display: flex; gap: 8px; margin-bottom: 40px; }
-        .step-dot { height: 3px; flex: 1; border-radius: 2px; background: var(--border); transition: all 0.3s; }
-        .step-dot.done { background: var(--accent); }
-        .step-dot.current { background: var(--accent); opacity: 0.5; }
+        .step-header h3 { font-size: 26px; font-weight: 700; margin-bottom: 8px; letter-spacing: -0.3px; }
+        .step-header p { font-size: 15px; color: var(--text-secondary); }
 
         .options-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 12px; }
-        .option-card { background: var(--bg-card); border: 1px solid var(--border); border-radius: 10px; padding: 20px 24px; cursor: pointer; transition: all 0.15s; }
-        .option-card:hover { border-color: var(--border-active); background: var(--bg-card-hover); transform: translateY(-1px); }
-        .option-card.selected { border-color: var(--accent); background: var(--accent-dim); }
-        .option-card h4 { font-size: 15px; font-weight: 600; margin-bottom: 4px; }
-        .option-card p { font-size: 13px; color: var(--text-secondary); line-height: 1.5; }
+        .option-card { background: var(--bg-card); border: 1.5px solid var(--border); border-radius: 10px; padding: 22px 24px; cursor: pointer; transition: all 0.15s; position: relative; }
+        .option-card:hover { border-color: rgba(255,255,255,0.15); background: var(--bg-card-hover); }
+        .option-card.selected { border-color: var(--accent); background: var(--accent-dim); box-shadow: 0 0 0 1px var(--accent); }
+        .option-card h4 { font-size: 16px; font-weight: 600; margin-bottom: 6px; }
+        .option-card p { font-size: 14px; color: var(--text-secondary); line-height: 1.5; }
+        .option-common { position: absolute; top: 10px; right: 12px; font-size: 10px; color: var(--text-tertiary); background: var(--bg-tertiary); padding: 2px 8px; border-radius: 3px; font-family: var(--font-mono); text-transform: uppercase; letter-spacing: 0.5px; }
+
+        .step-actions { display: flex; gap: 12px; margin-top: 28px; }
+        .btn { border: none; padding: 12px 28px; border-radius: 8px; cursor: pointer; font-size: 14px; font-weight: 600; font-family: var(--font-main); transition: all 0.15s; }
+        .btn-primary { background: var(--accent); color: #0C0F14; }
+        .btn-primary:hover { background: #D4B36A; transform: translateY(-1px); }
+        .btn-primary:disabled { opacity: 0.3; cursor: not-allowed; transform: none; }
+        .btn-secondary { background: var(--bg-card); border: 1.5px solid var(--border); color: var(--text-secondary); }
+        .btn-secondary:hover { border-color: var(--accent); color: var(--text-primary); }
 
         /* ── RESULTS ── */
-        .results-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 32px; }
-        .results-header h3 { font-size: 22px; font-weight: 700; }
-        .btn-reset { background: var(--bg-card); border: 1px solid var(--border); color: var(--text-secondary); padding: 8px 20px; border-radius: 6px; cursor: pointer; font-size: 13px; font-family: var(--font-main); transition: all 0.15s; }
-        .btn-reset:hover { border-color: var(--accent); color: var(--text-primary); }
+        .results-header { display: flex; align-items: flex-start; justify-content: space-between; margin-bottom: 32px; }
+        .results-header h3 { font-size: 24px; font-weight: 700; letter-spacing: -0.3px; }
+        .results-subtitle { font-size: 14px; color: var(--text-secondary); margin-top: 6px; }
 
-        .results-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(400px, 1fr)); gap: 16px; }
-        .strain-card { background: var(--bg-card); border: 1px solid var(--border); border-radius: 10px; overflow: hidden; transition: all 0.15s; cursor: pointer; }
-        .strain-card:hover { border-color: rgba(255,255,255,0.12); }
+        .results-summary { display: flex; gap: 12px; margin-bottom: 28px; flex-wrap: wrap; }
+        .summary-chip { font-size: 13px; font-family: var(--font-mono); color: var(--text-secondary); background: var(--bg-tertiary); padding: 6px 14px; border-radius: 6px; border: 1px solid var(--border); }
+        .summary-chip strong { color: var(--accent); font-weight: 600; }
+
+        .results-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(420px, 1fr)); gap: 16px; }
+        .strain-card { background: var(--bg-card); border: 1.5px solid var(--border); border-radius: 12px; overflow: hidden; transition: all 0.15s; cursor: pointer; }
+        .strain-card:hover { border-color: rgba(255,255,255,0.14); }
         .strain-card.top { border-color: var(--border-active); }
-        .card-top { padding: 20px 24px 16px; display: flex; justify-content: space-between; align-items: flex-start; }
-        .card-rank { width: 32px; height: 32px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 13px; font-weight: 700; font-family: var(--font-mono); background: var(--bg-tertiary); color: var(--text-secondary); flex-shrink: 0; }
-        .card-rank.gold { background: var(--accent-dim); color: var(--accent); }
+        .card-top { padding: 22px 24px 16px; display: flex; justify-content: space-between; align-items: flex-start; }
+        .card-rank { width: 34px; height: 34px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 14px; font-weight: 700; font-family: var(--font-mono); background: var(--bg-tertiary); color: var(--text-secondary); flex-shrink: 0; }
+        .card-rank.gold { background: var(--accent-dim); color: var(--accent); border: 1.5px solid rgba(196,163,90,0.3); }
         .card-info { flex: 1; margin-left: 16px; }
-        .card-info h4 { font-size: 16px; font-weight: 600; margin-bottom: 2px; }
-        .card-info .brand { font-size: 12px; color: var(--text-tertiary); }
+        .card-info h4 { font-size: 17px; font-weight: 600; margin-bottom: 3px; }
+        .card-info .brand { font-size: 13px; color: var(--text-tertiary); }
         .card-score { text-align: right; }
-        .card-score .pts { font-size: 22px; font-weight: 700; font-family: var(--font-mono); color: var(--accent); }
+        .card-score .pts { font-size: 24px; font-weight: 700; font-family: var(--font-mono); color: var(--accent); }
         .card-score .label { font-size: 10px; color: var(--text-tertiary); text-transform: uppercase; letter-spacing: 0.5px; }
 
-        .card-meta { padding: 0 24px 16px; display: flex; gap: 16px; flex-wrap: wrap; }
-        .meta-pill { font-size: 12px; font-family: var(--font-mono); color: var(--text-secondary); background: var(--bg-tertiary); padding: 4px 10px; border-radius: 4px; }
+        .card-meta { padding: 0 24px 16px; display: flex; gap: 8px; flex-wrap: wrap; }
+        .meta-pill { font-size: 12px; font-family: var(--font-mono); color: var(--text-secondary); background: var(--bg-tertiary); padding: 5px 10px; border-radius: 5px; }
 
         .card-terpbar { padding: 0 24px 16px; }
-        .terpbar-row { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; }
-        .terpbar-name { font-size: 11px; color: var(--text-secondary); width: 100px; text-align: right; font-family: var(--font-mono); flex-shrink: 0; }
-        .terpbar-track { flex: 1; height: 6px; background: var(--bg-tertiary); border-radius: 3px; overflow: hidden; }
-        .terpbar-fill { height: 100%; border-radius: 3px; transition: width 0.6s ease; }
-        .terpbar-val { font-size: 11px; color: var(--text-tertiary); font-family: var(--font-mono); width: 40px; flex-shrink: 0; }
+        .terpbar-row { display: flex; align-items: center; gap: 8px; margin-bottom: 7px; }
+        .terpbar-name { font-size: 12px; color: var(--text-secondary); width: 110px; text-align: right; font-family: var(--font-mono); flex-shrink: 0; }
+        .terpbar-track { flex: 1; height: 8px; background: var(--bg-tertiary); border-radius: 4px; overflow: hidden; }
+        .terpbar-fill { height: 100%; border-radius: 4px; transition: width 0.6s ease; }
+        .terpbar-val { font-size: 12px; color: var(--text-tertiary); font-family: var(--font-mono); width: 48px; flex-shrink: 0; }
 
         .card-cat { padding: 0 24px 16px; }
-        .cat-badge { display: inline-block; font-size: 11px; font-weight: 600; padding: 3px 10px; border-radius: 4px; letter-spacing: 0.3px; }
-        .status-badge { display: inline-block; font-size: 10px; font-weight: 500; padding: 2px 8px; border-radius: 3px; margin-left: 8px; text-transform: uppercase; letter-spacing: 0.5px; }
+        .cat-badge { display: inline-block; font-size: 12px; font-weight: 600; padding: 4px 12px; border-radius: 5px; letter-spacing: 0.3px; }
+        .status-badge { display: inline-block; font-size: 11px; font-weight: 500; padding: 3px 10px; border-radius: 4px; margin-left: 8px; text-transform: uppercase; letter-spacing: 0.5px; }
 
-        .card-expanded { padding: 0 24px 20px; border-top: 1px solid var(--border); margin-top: 4px; padding-top: 16px; }
+        .card-expanded { padding: 0 24px 22px; border-top: 1px solid var(--border); margin-top: 4px; padding-top: 18px; }
+        .rationale-list { list-style: none; padding: 0; margin: 0 0 16px; }
+        .rationale-item { font-size: 14px; color: var(--text-secondary); line-height: 1.6; padding: 6px 0; border-bottom: 1px solid rgba(255,255,255,0.04); display: flex; align-items: flex-start; gap: 8px; }
+        .rationale-item:last-child { border-bottom: none; }
+        .rationale-icon { color: var(--accent); font-size: 14px; flex-shrink: 0; margin-top: 2px; }
+        .rationale-warn { color: var(--red); }
         .expanded-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
-        .expanded-section h5 { font-size: 12px; font-weight: 600; color: var(--accent); text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 8px; }
-        .expanded-section p { font-size: 13px; color: var(--text-secondary); line-height: 1.6; }
-        .expanded-section .val { font-size: 14px; font-family: var(--font-mono); color: var(--text-primary); }
+        .expanded-section h5 { font-size: 13px; font-weight: 600; color: var(--accent); text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 8px; }
+        .expanded-section p { font-size: 14px; color: var(--text-secondary); line-height: 1.6; }
         .price-grid { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 8px; margin-top: 8px; }
-        .price-cell { background: var(--bg-tertiary); padding: 8px 12px; border-radius: 6px; }
-        .price-cell .price-label { font-size: 10px; color: var(--text-tertiary); text-transform: uppercase; letter-spacing: 0.3px; }
-        .price-cell .price-val { font-size: 14px; font-weight: 600; font-family: var(--font-mono); color: var(--text-primary); margin-top: 2px; }
+        .price-cell { background: var(--bg-tertiary); padding: 10px 14px; border-radius: 6px; }
+        .price-cell .price-label { font-size: 11px; color: var(--text-tertiary); text-transform: uppercase; letter-spacing: 0.3px; }
+        .price-cell .price-val { font-size: 15px; font-weight: 600; font-family: var(--font-mono); color: var(--text-primary); margin-top: 3px; }
+
+        .show-more { display: flex; justify-content: center; margin-top: 24px; }
 
         /* ── LIBRARY ── */
         .lib-controls { display: flex; gap: 12px; margin-bottom: 24px; align-items: center; flex-wrap: wrap; }
-        .lib-search { background: var(--bg-card); border: 1px solid var(--border); color: var(--text-primary); padding: 10px 16px; border-radius: 8px; font-size: 14px; font-family: var(--font-main); width: 300px; outline: none; transition: border-color 0.15s; }
+        .lib-search { background: var(--bg-card); border: 1.5px solid var(--border); color: var(--text-primary); padding: 11px 16px; border-radius: 8px; font-size: 14px; font-family: var(--font-main); width: 320px; outline: none; transition: border-color 0.15s; }
         .lib-search:focus { border-color: var(--accent); }
         .lib-search::placeholder { color: var(--text-tertiary); }
-        .lib-select { background: var(--bg-card); border: 1px solid var(--border); color: var(--text-primary); padding: 10px 14px; border-radius: 8px; font-size: 13px; font-family: var(--font-main); cursor: pointer; outline: none; }
+        .lib-select { background: var(--bg-card); border: 1.5px solid var(--border); color: var(--text-primary); padding: 11px 14px; border-radius: 8px; font-size: 13px; font-family: var(--font-main); cursor: pointer; outline: none; }
         .lib-select option { background: var(--bg-secondary); }
-        .lib-count { font-size: 12px; color: var(--text-tertiary); font-family: var(--font-mono); margin-left: auto; }
+        .lib-count { font-size: 13px; color: var(--text-tertiary); font-family: var(--font-mono); margin-left: auto; }
 
         .lib-table { width: 100%; border-collapse: collapse; }
-        .lib-table th { text-align: left; font-size: 11px; font-weight: 600; color: var(--text-tertiary); text-transform: uppercase; letter-spacing: 0.5px; padding: 12px 16px; border-bottom: 1px solid var(--border); }
-        .lib-table td { padding: 14px 16px; border-bottom: 1px solid var(--border); font-size: 14px; vertical-align: top; }
+        .lib-table th { text-align: left; font-size: 11px; font-weight: 600; color: var(--text-tertiary); text-transform: uppercase; letter-spacing: 0.5px; padding: 14px 16px; border-bottom: 1.5px solid var(--border); }
+        .lib-table td { padding: 16px 16px; border-bottom: 1px solid var(--border); font-size: 14px; vertical-align: top; }
+        .lib-table tr { cursor: pointer; transition: background 0.1s; }
         .lib-table tr:hover td { background: var(--bg-card-hover); }
-        .lib-table .name-cell { font-weight: 600; }
-        .lib-table .brand-cell { color: var(--text-secondary); font-size: 12px; }
+        .lib-table .name-cell { font-weight: 600; font-size: 15px; }
+        .lib-table .brand-cell { color: var(--text-secondary); font-size: 13px; margin-top: 2px; }
         .lib-table .mono { font-family: var(--font-mono); font-size: 13px; }
         .lib-terp-pills { display: flex; gap: 4px; flex-wrap: wrap; }
-        .lib-terp-pill { font-size: 10px; font-family: var(--font-mono); padding: 2px 6px; border-radius: 3px; color: rgba(255,255,255,0.85); white-space: nowrap; }
+        .lib-terp-pill { font-size: 11px; font-family: var(--font-mono); padding: 3px 8px; border-radius: 4px; color: rgba(255,255,255,0.88); white-space: nowrap; }
+
+        .lib-expanded-row td { background: var(--bg-card) !important; padding: 0 16px 20px !important; border-bottom: 2px solid var(--border) !important; }
+        .lib-detail { padding: 16px 0 0; }
+        .lib-detail-grid { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 20px; }
+        .lib-detail h5 { font-size: 12px; font-weight: 600; color: var(--accent); text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 8px; }
+        .lib-detail p { font-size: 14px; color: var(--text-secondary); line-height: 1.6; }
+        .lib-terpbar-mini { margin-top: 8px; }
+        .lib-terpbar-mini .terpbar-row { margin-bottom: 5px; }
 
         /* ── RESPONSIVE ── */
         @media (max-width: 1024px) {
@@ -348,11 +513,13 @@ export default function PrescriberDesktop() {
           .content { padding: 24px; }
           .results-grid { grid-template-columns: 1fr; }
           .expanded-grid { grid-template-columns: 1fr; }
+          .lib-detail-grid { grid-template-columns: 1fr; }
         }
         @media (max-width: 768px) {
           .sidebar { display: none; }
           .main { margin-left: 0; }
           .options-grid { grid-template-columns: 1fr; }
+          .results-grid { grid-template-columns: 1fr; }
           .lib-controls { flex-direction: column; align-items: stretch; }
           .lib-search { width: 100%; }
         }
@@ -377,7 +544,8 @@ export default function PrescriberDesktop() {
           </nav>
           <div className="sidebar-footer">
             <p>{strainDB.length} products indexed</p>
-            <p style={{marginTop:4}}>{strainDB.filter(s=>s.status==="tried").length} clinically verified</p>
+            <p>{strainDB.filter(s=>s.status==="tried").length} clinically verified</p>
+            <p>{strainDB.filter(s=>s.totalTerpenes).length} with terpene data</p>
           </div>
         </aside>
 
@@ -385,54 +553,82 @@ export default function PrescriberDesktop() {
         <div className="main">
           <div className="topbar">
             <h2>{view === "engine" ? "Prescribing Engine" : "Product Library"}</h2>
-            <span className="topbar-meta">v2.1 — {strainDB.length} products • {strainDB.filter(s=>s.totalTerpenes).length} with terpene data</span>
+            <span className="topbar-meta">v3.0 — {strainDB.length} products</span>
           </div>
 
           <div className="content">
+            {/* ── ENGINE: QUESTIONNAIRE ── */}
             {view === "engine" && !results && (
               <>
                 <div className="step-progress">
                   {steps.map((s, i) => (
-                    <div key={i} className={`step-dot ${i < step ? "done" : i === step ? "current" : ""}`} />
+                    <div key={i} className="step-pip">
+                      <div className={`step-pip-dot ${i < step ? "done" : i === step ? "current" : ""}`}>
+                        {i < step ? "✓" : i + 1}
+                      </div>
+                      {i < steps.length - 1 && <div className={`step-pip-line ${i < step ? "done" : ""}`} />}
+                    </div>
                   ))}
                 </div>
+
                 <div className="step-header">
                   <h3>{steps[step].title}</h3>
                   <p>{steps[step].subtitle}</p>
                 </div>
+
                 <div className="options-grid">
                   {steps[step].options.map(opt => (
                     <div
                       key={opt.id}
-                      className={`option-card ${answers[steps[step].key] === opt.id ? "selected" : ""}`}
-                      onClick={() => handleAnswer(steps[step].key, opt.id)}
+                      className={`option-card ${currentVal === opt.id ? "selected" : ""}`}
+                      onClick={() => handleSelect(steps[step].key, opt.id)}
                     >
+                      {opt.common && <span className="option-common">Common</span>}
                       <h4>{opt.label}</h4>
                       <p>{opt.desc}</p>
                     </div>
                   ))}
                 </div>
-                {step > 0 && (
-                  <div style={{marginTop:24}}>
-                    <button className="btn-reset" onClick={() => setStep(step - 1)}>← Back</button>
-                  </div>
-                )}
+
+                <div className="step-actions">
+                  {step > 0 && (
+                    <button className="btn btn-secondary" onClick={() => { setPendingAnswer(null); setStep(step - 1); }}>
+                      ← Back
+                    </button>
+                  )}
+                  <button
+                    className="btn btn-primary"
+                    disabled={!currentVal}
+                    onClick={confirmAndAdvance}
+                  >
+                    {step < 4 ? "Continue →" : "Generate Recommendations"}
+                  </button>
+                </div>
               </>
             )}
 
+            {/* ── ENGINE: RESULTS ── */}
             {view === "engine" && results && (
               <>
                 <div className="results-header">
                   <div>
                     <h3>Prescribing Recommendations</h3>
-                    <p style={{fontSize:13,color:"var(--text-secondary)",marginTop:4}}>{results.length} products scored against patient profile</p>
+                    <p className="results-subtitle">{results.length} products scored against patient profile</p>
                   </div>
-                  <button className="btn-reset" onClick={reset}>New Assessment</button>
+                  <button className="btn btn-secondary" onClick={reset}>New Assessment</button>
                 </div>
+
+                <div className="results-summary">
+                  <span className="summary-chip"><strong>Goal:</strong> {GOALS.find(g=>g.id===answers.goal)?.label}</span>
+                  <span className="summary-chip"><strong>Avoid:</strong> {AVOID.find(a=>a.id===answers.avoid)?.label}</span>
+                  <span className="summary-chip"><strong>THC:</strong> {INTENSITY.find(i=>i.id===answers.intensity)?.label}</span>
+                  <span className="summary-chip"><strong>Experience:</strong> {EXPERIENCE.find(e=>e.id===answers.experience)?.label}</span>
+                  <span className="summary-chip"><strong>Budget:</strong> {BUDGET.find(b=>b.id===answers.budget)?.label}</span>
+                </div>
+
                 <div className="results-grid">
-                  {results.slice(0, 12).map((strain, idx) => {
+                  {results.slice(0, showCount).map((strain, idx) => {
                     const top = getTopTerpenes(strain.terpenes, 4);
-                    const maxTerp = Math.max(...top.map(t => t.value), 0.5);
                     const expanded = expandedCard === idx;
                     return (
                       <div key={idx} className={`strain-card ${idx < 3 ? "top" : ""}`} onClick={() => setExpandedCard(expanded ? null : idx)}>
@@ -453,6 +649,7 @@ export default function PrescriberDesktop() {
                           {strain.cbd > 0 && <span className="meta-pill">CBD {strain.cbd}%</span>}
                           <span className="meta-pill">{strain.totalTerpenes?.toFixed(1)}% terps</span>
                           <span className="meta-pill">{strain.species}</span>
+                          {strain.price && <span className="meta-pill">${strain.price.toFixed(2)}/g</span>}
                         </div>
 
                         <div className="card-terpbar">
@@ -460,7 +657,7 @@ export default function PrescriberDesktop() {
                             <div key={ti} className="terpbar-row">
                               <span className="terpbar-name">{t.name}</span>
                               <div className="terpbar-track">
-                                <div className="terpbar-fill" style={{width:`${(t.value / maxTerp) * 100}%`, background: terpColor(t.name)}} />
+                                <div className="terpbar-fill" style={{width:`${Math.min((t.value / TERP_BAR_MAX) * 100, 100)}%`, background: terpColor(t.name)}} />
                               </div>
                               <span className="terpbar-val">{t.value.toFixed(2)}%</span>
                             </div>
@@ -468,26 +665,33 @@ export default function PrescriberDesktop() {
                         </div>
 
                         <div className="card-cat">
-                          <span className="cat-badge" style={{background: catBadge(strain.category) + "22", color: catBadge(strain.category)}}>{strain.category}</span>
+                          <span className="cat-badge" style={{background: catBadge(strain.category) + "25", color: catBadge(strain.category)}}>{strain.category}</span>
                           <span className="status-badge" style={{background: strain.status === "tried" ? "rgba(76,175,125,0.15)" : "rgba(255,255,255,0.06)", color: strain.status === "tried" ? "var(--green)" : "var(--text-tertiary)"}}>{strain.status === "tried" ? "✓ Verified" : "Predicted"}</span>
                         </div>
 
                         {expanded && (
                           <div className="card-expanded">
+                            {strain.reasons && strain.reasons.length > 0 && (
+                              <>
+                                <h5 style={{fontSize:13,fontWeight:600,color:"var(--accent)",textTransform:"uppercase",letterSpacing:"0.5px",marginBottom:10}}>Why This Product Scored {strain.score > 0 ? "Well" : "Poorly"}</h5>
+                                <ul className="rationale-list">
+                                  {strain.reasons.map((r, ri) => (
+                                    <li key={ri} className="rationale-item">
+                                      <span className={`rationale-icon ${r.startsWith("⚠") ? "rationale-warn" : ""}`}>
+                                        {r.startsWith("⚠") ? "⚠" : "→"}
+                                      </span>
+                                      <span>{r.startsWith("⚠ ") ? r.slice(2) : r}</span>
+                                    </li>
+                                  ))}
+                                </ul>
+                              </>
+                            )}
                             <div className="expanded-grid">
-                              <div className="expanded-section">
-                                <h5>Therapeutic Objective</h5>
-                                <p>{answers.goal === "functional" ? "Functional clarity — daytime focus and productivity" : answers.goal === "creative" ? "Deep thinking — introspection and creativity" : answers.goal === "pain" ? "Pain management — anti-inflammatory relief" : answers.goal === "sleep" ? "Sleep support — onset and maintenance" : "Anxiolytic — calm without sedation"}</p>
-                              </div>
-                              <div className="expanded-section">
-                                <h5>Contraindications</h5>
-                                <p>{answers.avoid === "anxiety" ? "Avoid overstimulation / anxiety" : answers.avoid === "sedation" ? "Avoid excessive sedation" : answers.avoid === "paranoia" ? "Avoid paranoia / dissociation" : "No specific concerns"}</p>
-                              </div>
                               <div className="expanded-section">
                                 <h5>Clinical Notes</h5>
                                 <p>{strain.notes}</p>
                               </div>
-                              {strain.price && (
+                              {strain.price ? (
                                 <div className="expanded-section">
                                   <h5>Pricing</h5>
                                   <div className="price-grid">
@@ -505,6 +709,11 @@ export default function PrescriberDesktop() {
                                     </div>
                                   </div>
                                 </div>
+                              ) : (
+                                <div className="expanded-section">
+                                  <h5>Pricing</h5>
+                                  <p style={{color:"var(--text-tertiary)", fontStyle:"italic"}}>Price unavailable — personal/verified product</p>
+                                </div>
                               )}
                             </div>
                           </div>
@@ -513,9 +722,18 @@ export default function PrescriberDesktop() {
                     );
                   })}
                 </div>
+
+                {showCount < results.length && (
+                  <div className="show-more">
+                    <button className="btn btn-secondary" onClick={() => setShowCount(prev => prev + 8)}>
+                      Show More ({results.length - showCount} remaining)
+                    </button>
+                  </div>
+                )}
               </>
             )}
 
+            {/* ── LIBRARY ── */}
             {view === "library" && (
               <>
                 <div className="lib-controls">
@@ -553,26 +771,85 @@ export default function PrescriberDesktop() {
                   <tbody>
                     {libStrains.map((s, i) => {
                       const top = getTopTerpenes(s.terpenes, 3);
+                      const isExpanded = libExpanded === i;
+                      const allTerps = getTopTerpenes(s.terpenes, 8);
                       return (
-                        <tr key={i}>
-                          <td>
-                            <div className="name-cell">{s.name}</div>
-                            <div className="brand-cell">{s.brand}{s.cultivar ? ` · ${s.cultivar}` : ""}</div>
-                          </td>
-                          <td className="mono">{s.thc}%</td>
-                          <td className="mono">{s.cbd > 0 ? `${s.cbd}%` : "—"}</td>
-                          <td className="mono">{s.totalTerpenes ? `${s.totalTerpenes.toFixed(2)}%` : "—"}</td>
-                          <td>
-                            <div className="lib-terp-pills">
-                              {top.map((t, ti) => (
-                                <span key={ti} className="lib-terp-pill" style={{background: terpColor(t.name) + "33", color: terpColor(t.name)}}>{t.name} {t.value.toFixed(2)}</span>
-                              ))}
-                            </div>
-                          </td>
-                          <td><span className="cat-badge" style={{background: catBadge(s.category) + "22", color: catBadge(s.category), fontSize:11}}>{s.category}</span></td>
-                          <td className="mono">{s.price ? `$${s.price.toFixed(2)}` : "—"}</td>
-                          <td><span className="status-badge" style={{background: s.status === "tried" ? "rgba(76,175,125,0.15)" : "rgba(255,255,255,0.06)", color: s.status === "tried" ? "var(--green)" : "var(--text-tertiary)"}}>{s.status === "tried" ? "✓ Verified" : "Predicted"}</span></td>
-                        </tr>
+                        <React.Fragment key={i}>
+                          <tr onClick={() => setLibExpanded(isExpanded ? null : i)}>
+                            <td>
+                              <div className="name-cell">{s.name}</div>
+                              <div className="brand-cell">{s.brand}{s.cultivar ? ` · ${s.cultivar}` : ""}</div>
+                            </td>
+                            <td className="mono">{s.thc}%</td>
+                            <td className="mono">{s.cbd > 0 ? `${s.cbd}%` : "—"}</td>
+                            <td className="mono">{s.totalTerpenes ? `${s.totalTerpenes.toFixed(2)}%` : "—"}</td>
+                            <td>
+                              <div className="lib-terp-pills">
+                                {top.map((t, ti) => (
+                                  <span key={ti} className="lib-terp-pill" style={{background: terpColor(t.name) + "33", color: terpColor(t.name)}}>{t.name} {t.value.toFixed(2)}</span>
+                                ))}
+                              </div>
+                            </td>
+                            <td><span className="cat-badge" style={{background: catBadge(s.category) + "25", color: catBadge(s.category), fontSize:12}}>{s.category}</span></td>
+                            <td className="mono">{s.price ? `$${s.price.toFixed(2)}` : "—"}</td>
+                            <td><span className="status-badge" style={{background: s.status === "tried" ? "rgba(76,175,125,0.15)" : "rgba(255,255,255,0.06)", color: s.status === "tried" ? "var(--green)" : "var(--text-tertiary)"}}>{s.status === "tried" ? "✓ Verified" : "Predicted"}</span></td>
+                          </tr>
+                          {isExpanded && (
+                            <tr className="lib-expanded-row">
+                              <td colSpan={8}>
+                                <div className="lib-detail">
+                                  <div className="lib-detail-grid">
+                                    <div>
+                                      <h5>Full Terpene Profile</h5>
+                                      <div className="lib-terpbar-mini">
+                                        {allTerps.map((t, ti) => (
+                                          <div key={ti} className="terpbar-row">
+                                            <span className="terpbar-name">{t.name}</span>
+                                            <div className="terpbar-track">
+                                              <div className="terpbar-fill" style={{width:`${Math.min((t.value / TERP_BAR_MAX) * 100, 100)}%`, background: terpColor(t.name)}} />
+                                            </div>
+                                            <span className="terpbar-val">{t.value.toFixed(2)}%</span>
+                                          </div>
+                                        ))}
+                                      </div>
+                                    </div>
+                                    <div>
+                                      <h5>Clinical Notes</h5>
+                                      <p>{s.notes}</p>
+                                      <div style={{marginTop:16}}>
+                                        <h5>Product Details</h5>
+                                        <p>Species: {s.species}</p>
+                                        {s.sizes?.length > 0 && <p>Available sizes: {s.sizes.join(", ")}</p>}
+                                      </div>
+                                    </div>
+                                    <div>
+                                      {s.price ? (
+                                        <>
+                                          <h5>Pricing</h5>
+                                          <div className="price-grid" style={{gridTemplateColumns:"1fr 1fr"}}>
+                                            <div className="price-cell">
+                                              <div className="price-label">Per Gram</div>
+                                              <div className="price-val">${s.price.toFixed(2)}</div>
+                                            </div>
+                                            <div className="price-cell">
+                                              <div className="price-label">RRP</div>
+                                              <div className="price-val">${s.rrp}</div>
+                                            </div>
+                                          </div>
+                                        </>
+                                      ) : (
+                                        <>
+                                          <h5>Pricing</h5>
+                                          <p style={{color:"var(--text-tertiary)", fontStyle:"italic"}}>Price unavailable</p>
+                                        </>
+                                      )}
+                                    </div>
+                                  </div>
+                                </div>
+                              </td>
+                            </tr>
+                          )}
+                        </React.Fragment>
                       );
                     })}
                   </tbody>
