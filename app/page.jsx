@@ -122,8 +122,8 @@ function scoreStrain(strain, answers) {
   if (answers.goal === "pain") {
     const g = Math.round(car * 45 + myr * 25 + lin * 20 + bis * 15);
     score += g;
-    if (car > 0.4) { score += 20; reasons.push(`Strong caryophyllene (${car.toFixed(2)}%) — CB2 receptor binding for pain (+20)`); }
-    if (lin > 0.15) reasons.push(`Linalool present (${lin.toFixed(2)}%) — analgesic support`);
+    if (car > 0.4) { score += 20; reasons.push(`Strong caryophyllene (${car.toFixed(2)}%) — associated with pain-related profiles in the terpene literature (+20)`); }
+    if (lin > 0.15) reasons.push(`Linalool present (${lin.toFixed(2)}%) — present in sedation and pain-associated terpene profiles`);
   }
   if (answers.goal === "sleep") {
     const g = Math.round(myr * 45 + lin * 35 + bis * 20 - lim * 15 - pin * 10);
