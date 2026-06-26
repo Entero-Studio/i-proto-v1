@@ -2,7 +2,7 @@
 import { useState, useCallback, Fragment } from "react";
 
 /* ============================================================
-   TERPENE PRESCRIBER INTELLIGENCE v3.2
+   TERPENE PRESCRIBER INTELLIGENCE v3.5.3
    Desktop-First Clinical Decision Support
    Canonical Database v1.0 — 52 products (16 verified, 36 predicted)
    June 2026
@@ -282,6 +282,7 @@ const ANSWER_LABELS = {
 // ── MAIN APP ──
 export default function PrescriberDesktop() {
   const [view, setView] = useState("engine");
+  const [theme, setTheme] = useState("light");
   const [step, setStep] = useState(0);
   const [answers, setAnswers] = useState({ goal:null, avoid:null, intensity:null, experience:null, budget:null });
   const [pendingAnswer, setPendingAnswer] = useState(null);
@@ -353,143 +354,171 @@ export default function PrescriberDesktop() {
     });
 
   const currentPending = pendingAnswer?.key === steps[step]?.key ? pendingAnswer.val : null;
+  const verifiedCount = strainDB.filter(s => s.status === "tried").length;
+  const cbgCount = strainDB.filter(s => s.cbg > 0).length;
+  const terpeneDataCount = strainDB.filter(s => s.totalTerpenes).length;
 
   return (
     <>
-      <style>{`
-        @import url('https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,400;0,9..40,500;0,9..40,600;0,9..40,700;1,9..40,400&family=JetBrains+Mono:wght@400;500&display=swap');
+      <style
+        suppressHydrationWarning
+        dangerouslySetInnerHTML={{ __html: `
         * { margin:0; padding:0; box-sizing:border-box; }
         :root {
-          --bg-primary: #0C0F14;
-          --bg-secondary: #121620;
-          --bg-tertiary: #1A2030;
-          --bg-card: #1C2235;
-          --bg-card-hover: #222842;
-          --border: rgba(255,255,255,0.09);
-          --border-active: rgba(196,163,90,0.4);
-          --text-primary: rgba(255,255,255,0.92);
-          --text-secondary: rgba(255,255,255,0.68);
-          --text-tertiary: rgba(255,255,255,0.48);
-          --accent: #C4A35A;
-          --accent-dim: rgba(196,163,90,0.15);
-          --green: #4CAF7D;
-          --red: #C45A5A;
-          --cbg: #7EC8A4;
-          --cbg-dim: rgba(126,200,164,0.15);
-          --font-main: 'DM Sans', -apple-system, sans-serif;
-          --font-mono: 'JetBrains Mono', monospace;
+          --bg:#EDF1EF; --surface:#FFFFFF; --surface-2:#F4F7F5; --surface-3:#E9EEEB;
+          --ink:#16211F; --muted:#566561; --faint:#8C9A96;
+          --border:#E2E8E5; --border-strong:#D2DBD7;
+          --primary:#1E5F6B; --primary-strong:#16454E; --primary-soft:rgba(30,95,107,.08);
+          --gold:#9C7C2A; --score:#9C7C2A; --gold-bright:#C9A84C;
+          --verified:#2E7D5B; --verified-soft:rgba(46,125,91,.10);
+          --danger:#C0563B;
+          --shadow:0 1px 2px rgba(20,40,38,.04), 0 4px 16px rgba(20,40,38,.05);
+          --shadow-lg:0 2px 6px rgba(20,40,38,.06), 0 18px 50px rgba(20,40,38,.10);
+          --font-main: var(--font-dm-sans), 'DM Sans', -apple-system, sans-serif;
+          --font-mono: var(--font-dm-mono), 'DM Mono', monospace;
+          --bg-primary:var(--bg); --bg-secondary:var(--surface); --bg-tertiary:var(--surface-2);
+          --bg-card:var(--surface); --bg-card-hover:var(--surface-2);
+          --border-active:var(--primary); --text-primary:var(--ink);
+          --text-secondary:var(--muted); --text-tertiary:var(--faint);
+          --accent:var(--primary); --accent-dim:var(--primary-soft);
+          --green:var(--verified); --red:var(--danger); --cbg:var(--verified);
+          --cbg-dim:var(--verified-soft);
         }
-        body { background: var(--bg-primary); color: var(--text-primary); font-family: var(--font-main); -webkit-font-smoothing: antialiased; }
-        .shell { display: flex; min-height: 100vh; }
-        .sidebar { width: 260px; background: var(--bg-secondary); border-right: 1px solid var(--border); display: flex; flex-direction: column; position: fixed; top: 0; left: 0; bottom: 0; z-index: 10; }
-        .sidebar-brand { padding: 28px 24px 20px; border-bottom: 1px solid var(--border); }
-        .sidebar-brand h1 { font-size: 15px; font-weight: 700; letter-spacing: 0.5px; color: var(--accent); text-transform: uppercase; }
-        .sidebar-brand p { font-size: 11px; color: var(--text-tertiary); margin-top: 4px; letter-spacing: 0.3px; }
-        .sidebar-nav { padding: 16px 12px; flex: 1; }
-        .nav-item { display: flex; align-items: center; gap: 12px; padding: 12px 16px; border-radius: 8px; cursor: pointer; font-size: 14px; font-weight: 500; color: var(--text-secondary); transition: all 0.15s; margin-bottom: 4px; }
-        .nav-item:hover { background: var(--bg-tertiary); color: var(--text-primary); }
-        .nav-item.active { background: var(--accent-dim); color: var(--accent); }
+        [data-theme="dark"] {
+          --bg:#0A1316; --surface:#0F1C20; --surface-2:#15252A; --surface-3:#1B2F35;
+          --ink:#E9EEEC; --muted:#94A5A1; --faint:#69807B;
+          --border:#21343A; --border-strong:#2D444B;
+          --primary:#56B7C6; --primary-strong:#7FCDD9; --primary-soft:rgba(86,183,198,.13);
+          --gold:#D8BA63; --score:#D8BA63; --gold-bright:#D8BA63;
+          --verified:#4FC08A; --verified-soft:rgba(79,192,138,.12);
+          --danger:#E0795C;
+          --shadow:0 1px 2px rgba(0,0,0,.3), 0 6px 22px rgba(0,0,0,.28);
+          --shadow-lg:0 2px 8px rgba(0,0,0,.35), 0 22px 60px rgba(0,0,0,.5);
+        }
+        @keyframes fadeUp { from { opacity:0; transform:translateY(10px); } to { opacity:1; transform:translateY(0); } }
+        @keyframes growBar { from { transform:scaleX(0); } to { transform:scaleX(1); } }
+        html, body { background: var(--bg); }
+        body { color: var(--ink); font-family: var(--font-main); -webkit-font-smoothing: antialiased; }
+        button, input, select { font: inherit; }
+        .shell { display: flex; min-height: 100vh; background: var(--bg); color: var(--ink); transition: background .35s ease,color .35s ease; }
+        .sidebar { width: 248px; flex: 0 0 248px; background: var(--surface); border-right: 1px solid var(--border); display: flex; flex-direction: column; position: sticky; top: 0; height: 100vh; z-index: 10; }
+        .sidebar-brand { padding: 26px 24px 22px; border-bottom: 1px solid var(--border); }
+        .brand-prescriber { font-size: 15px; font-weight: 600; letter-spacing: 0.17em; color: var(--ink); text-transform: uppercase; line-height: 1.1; }
+        .brand-intelligence { font-size: 13px; font-weight: 300; letter-spacing: 0.17em; color: var(--primary); text-transform: uppercase; line-height: 1.2; margin-top: 2px; }
+        .sidebar-brand p { font-size: 9.5px; color: var(--faint); margin-top: 9px; letter-spacing: 0.16em; text-transform: uppercase; font-family: var(--font-mono); }
+        .sidebar-nav { padding: 16px 14px; flex: 1; }
+        .nav-item { display: flex; align-items: center; gap: 11px; width:100%; text-align:left; padding: 11px 13px; border-radius: 10px; cursor: pointer; font-size: 13.5px; font-weight: 500; color: var(--muted); transition: all 0.18s; margin-bottom: 4px; border: none; background: transparent; }
+        .nav-item:hover { background: var(--surface-2); color: var(--ink); }
+        .nav-item.active { background: var(--primary-soft); color: var(--primary); }
         .nav-icon { width: 20px; text-align: center; font-size: 16px; }
-        .sidebar-footer { padding: 16px 24px; border-top: 1px solid var(--border); }
-        .sidebar-footer p { font-size: 11px; color: var(--text-tertiary); font-family: var(--font-mono); }
-        .main { margin-left: 260px; flex: 1; min-height: 100vh; }
-        .topbar { height: 64px; border-bottom: 1px solid var(--border); display: flex; align-items: center; justify-content: space-between; padding: 0 40px; background: var(--bg-secondary); position: sticky; top: 0; z-index: 5; }
-        .topbar h2 { font-size: 16px; font-weight: 600; }
-        .topbar-meta { font-size: 12px; color: var(--text-tertiary); font-family: var(--font-mono); }
-        .content { padding: 40px; max-width: 1400px; }
+        .sidebar-footer { margin-top: auto; padding: 18px 22px; border-top: 1px solid var(--border); }
+        .sidebar-footer p { font-size: 10.5px; color: var(--faint); font-family: var(--font-mono); line-height:1.9; }
+        .main { flex: 1; min-width:0; height:100vh; overflow-y:auto; display:flex; flex-direction:column; }
+        .topbar { height: 64px; border-bottom: 1px solid var(--border); display: flex; align-items: center; justify-content: space-between; padding: 0 36px; background: color-mix(in srgb, var(--surface) 94%, transparent); backdrop-filter: blur(12px); position: sticky; top: 0; z-index: 20; }
+        .topbar h2 { font-size: 16px; font-weight: 600; letter-spacing: 0; }
+        .topbar-right { display:flex; align-items:center; gap:18px; }
+        .topbar-meta { font-size: 11px; color: var(--faint); font-family: var(--font-mono); }
+        .theme-toggle { height:34px; padding:0 13px; border-radius:9px; border:1px solid var(--border-strong); background:var(--surface-2); color:var(--ink); cursor:pointer; display:inline-flex; align-items:center; gap:7px; font-family:var(--font-mono); font-size:10.5px; letter-spacing:.08em; text-transform:uppercase; }
+        .content { flex:1; padding: 38px 40px 64px; max-width: 1400px; width:100%; }
+        .content.engine-content { max-width:1120px; margin:0 auto; }
+        .content.wide-content { max-width:1320px; margin:0 auto; }
         .step-progress { display: flex; align-items: center; margin-bottom: 40px; }
-        .step-circle { width: 28px; height: 28px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 12px; font-weight: 700; font-family: var(--font-mono); border: 2px solid var(--border); color: var(--text-tertiary); background: transparent; flex-shrink: 0; transition: all 0.2s; }
-        .step-circle.done { background: var(--accent); border-color: var(--accent); color: #0C0F14; }
-        .step-circle.current { border-color: var(--accent); color: var(--accent); }
-        .step-line { flex: 1; height: 2px; background: var(--border); margin: 0 8px; transition: background 0.3s; }
-        .step-line.done { background: var(--accent); }
+        .step-circle { width: 30px; height: 30px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 13px; font-weight: 500; font-family: var(--font-mono); border: 1.5px solid var(--border-strong); color: var(--faint); background: transparent; flex-shrink: 0; transition: all 0.2s; }
+        .step-circle.done { background: var(--primary); border-color: var(--primary); color: var(--surface); }
+        .step-circle.current { border-color: var(--primary); color: var(--primary); background:var(--primary-soft); }
+        .step-line { flex: 1; height: 1.5px; background: var(--border-strong); margin: 0 10px; transition: background 0.3s; border-radius:2px; }
+        .step-line.done { background: var(--primary); }
         .step-header { margin-bottom: 32px; }
-        .step-header h3 { font-size: 26px; font-weight: 700; margin-bottom: 6px; }
-        .step-header p { font-size: 14px; color: var(--text-secondary); }
-        .options-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 12px; }
-        .option-card { background: var(--bg-card); border: 1px solid var(--border); border-radius: 10px; padding: 20px 24px; cursor: pointer; transition: all 0.15s; position: relative; }
-        .option-card:hover { border-color: var(--border-active); background: var(--bg-card-hover); transform: translateY(-1px); }
-        .option-card.pending { border-color: var(--accent); background: var(--accent-dim); }
-        .option-card h4 { font-size: 16px; font-weight: 600; margin-bottom: 4px; }
-        .option-card p { font-size: 14px; color: var(--text-secondary); line-height: 1.5; }
-        .common-badge { position: absolute; top: 12px; right: 12px; font-size: 9px; font-weight: 700; color: var(--accent); background: var(--accent-dim); padding: 2px 7px; border-radius: 3px; letter-spacing: 0.8px; text-transform: uppercase; }
+        .step-kicker { color:var(--primary); font-size:11px; font-family:var(--font-mono); letter-spacing:.16em; text-transform:uppercase; margin-bottom:10px; }
+        .step-header h3 { font-size: 33px; font-weight: 600; margin-bottom: 8px; letter-spacing:0; }
+        .step-header p { font-size: 15.5px; color: var(--muted); }
+        .options-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(264px, 1fr)); gap: 14px; }
+        .option-card { background: var(--surface); border: 1px solid var(--border); border-radius: 14px; padding: 20px; cursor: pointer; transition: all 0.18s; position: relative; text-align:left; box-shadow:var(--shadow); }
+        .option-card:hover { border-color: var(--border-strong); background: var(--surface); transform: translateY(-2px); }
+        .option-card.pending { border-color: var(--primary); background: var(--primary-soft); box-shadow: inset 0 0 0 1px var(--primary), var(--shadow); }
+        .option-card.pending::after { content:"✓"; position:absolute; top:14px; right:14px; width:20px; height:20px; border-radius:50%; background:var(--primary); color:var(--surface); display:flex; align-items:center; justify-content:center; font-size:12px; }
+        .option-card h4 { font-size: 16.5px; font-weight: 600; margin-bottom: 5px; letter-spacing:0; padding-right:68px; }
+        .option-card p { font-size: 13.5px; color: var(--muted); line-height: 1.45; }
+        .common-badge { position: absolute; top: 14px; right: 14px; font-size: 8.5px; font-family:var(--font-mono); font-weight: 500; color: var(--gold); background: var(--surface-2); border:1px solid var(--border); padding: 3px 6px; border-radius: 5px; letter-spacing: 0; text-transform: uppercase; }
         .step-actions { display: flex; gap: 12px; margin-top: 28px; }
-        .btn-primary { background: var(--accent); border: 1px solid var(--accent); color: #0C0F14; padding: 10px 28px; border-radius: 6px; cursor: pointer; font-size: 14px; font-weight: 600; font-family: var(--font-main); transition: all 0.15s; }
+        .btn-primary { height:46px; background: var(--primary); border: 1px solid var(--primary); color: var(--surface); padding: 0 26px; border-radius: 11px; cursor: pointer; font-size: 14px; font-weight: 600; font-family: var(--font-main); transition: all 0.15s; }
         .btn-primary:hover { filter: brightness(1.1); }
-        .btn-primary:disabled { opacity: 0.35; cursor: not-allowed; filter: none; }
-        .btn-secondary { background: var(--bg-card); border: 1px solid var(--border); color: var(--text-secondary); padding: 10px 24px; border-radius: 6px; cursor: pointer; font-size: 14px; font-family: var(--font-main); transition: all 0.15s; }
-        .btn-secondary:hover { border-color: var(--accent); color: var(--text-primary); }
+        .btn-primary:disabled { background:var(--surface-2); border-color:var(--border); color:var(--faint); cursor: not-allowed; filter: none; }
+        .btn-secondary { height:46px; background: var(--surface); border: 1px solid var(--border-strong); color: var(--ink); padding: 0 20px; border-radius: 11px; cursor: pointer; font-size: 14px; font-family: var(--font-main); transition: all 0.15s; }
+        .btn-secondary:hover { border-color: var(--primary); color: var(--primary); }
         .profile-summary { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 24px; }
-        .profile-chip { font-size: 12px; font-family: var(--font-mono); color: var(--accent); background: var(--accent-dim); padding: 5px 12px; border-radius: 5px; }
+        .profile-chip { font-size: 11px; font-family: var(--font-mono); color: var(--muted); background: var(--surface); border:1px solid var(--border); padding: 7px 12px; border-radius: 8px; }
+        .profile-chip::before { content:""; display:inline-block; width:5px; height:5px; border-radius:50%; background:var(--primary); margin-right:8px; vertical-align:middle; }
         .results-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 16px; }
-        .results-header h3 { font-size: 22px; font-weight: 700; }
-        .results-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(420px, 1fr)); gap: 16px; }
-        .strain-card { background: var(--bg-card); border: 1px solid var(--border); border-radius: 10px; overflow: hidden; transition: all 0.15s; cursor: pointer; }
-        .strain-card:hover { border-color: rgba(255,255,255,0.14); }
-        .strain-card.top { border-color: var(--border-active); }
-        .card-top { padding: 20px 24px 16px; display: flex; justify-content: space-between; align-items: flex-start; }
-        .card-rank { width: 32px; height: 32px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 13px; font-weight: 700; font-family: var(--font-mono); background: var(--bg-tertiary); color: var(--text-secondary); flex-shrink: 0; }
-        .card-rank.gold { background: var(--accent-dim); color: var(--accent); }
+        .results-header h3 { font-size: 31px; font-weight: 600; letter-spacing:0; }
+        .results-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(400px, 1fr)); gap: 16px; animation:fadeUp .4s ease; }
+        .strain-card { position:relative; background: var(--surface); border: 1px solid var(--border); border-radius: 16px; overflow: visible; transition: all 0.15s; cursor: pointer; box-shadow:var(--shadow); }
+        .strain-card:hover { box-shadow:var(--shadow-lg); }
+        .strain-card.top { box-shadow: inset 0 0 0 1.5px var(--primary), var(--shadow); }
+        .top-match { position:absolute; top:-10px; left:22px; font-family:var(--font-mono); font-size:9px; background:var(--primary); color:var(--surface); padding:4px 9px; border-radius:6px; text-transform:uppercase; letter-spacing:.04em; }
+        .card-top { padding: 22px 22px 16px; display: flex; justify-content: space-between; align-items: flex-start; }
+        .card-rank { width: 28px; height: 28px; border-radius: 8px; display: flex; align-items: center; justify-content: center; font-size: 12px; font-weight: 500; font-family: var(--font-mono); background: var(--surface-2); border:1px solid var(--border); color: var(--muted); flex-shrink: 0; }
+        .card-rank.gold { background: var(--primary-soft); color: var(--primary); }
         .card-info { flex: 1; margin-left: 16px; }
-        .card-info h4 { font-size: 17px; font-weight: 600; margin-bottom: 2px; }
-        .card-info .brand { font-size: 12px; color: var(--text-tertiary); }
+        .card-info h4 { font-size: 18px; font-weight: 600; margin-bottom: 2px; letter-spacing:0; }
+        .card-info .brand { font-size: 12.5px; color: var(--muted); }
         .card-score { text-align: right; }
-        .card-score .pts { font-size: 24px; font-weight: 700; font-family: var(--font-mono); color: var(--accent); }
-        .card-score .label { font-size: 10px; color: var(--text-tertiary); text-transform: uppercase; letter-spacing: 0.5px; }
+        .card-score .pts { font-size: 30px; font-weight: 500; font-family: var(--font-mono); color: var(--score); line-height:1; letter-spacing:0; }
+        .card-score .label { font-size: 9px; color: var(--faint); text-transform: uppercase; letter-spacing: 0; font-family:var(--font-mono); margin-top:3px; }
         .card-meta { padding: 0 24px 16px; display: flex; gap: 10px; flex-wrap: wrap; }
-        .meta-pill { font-size: 12px; font-family: var(--font-mono); color: var(--text-secondary); background: var(--bg-tertiary); padding: 4px 10px; border-radius: 4px; }
+        .meta-pill { font-size: 11px; font-family: var(--font-mono); color: var(--muted); background: var(--surface-2); border:1px solid var(--border); padding: 5px 9px; border-radius: 7px; }
         .meta-pill.cbg { color: var(--cbg); background: var(--cbg-dim); }
         .card-terpbar { padding: 0 24px 16px; }
-        .terpbar-row { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; }
-        .terpbar-name { font-size: 12px; color: var(--text-secondary); width: 110px; text-align: right; font-family: var(--font-mono); flex-shrink: 0; }
-        .terpbar-track { flex: 1; height: 8px; background: var(--bg-tertiary); border-radius: 4px; overflow: hidden; }
-        .terpbar-fill { height: 100%; border-radius: 4px; transition: width 0.6s ease; }
-        .terpbar-val { font-size: 12px; color: var(--text-tertiary); font-family: var(--font-mono); width: 44px; flex-shrink: 0; }
+        .terpbar-row { display: grid; grid-template-columns:118px 1fr 44px; align-items: center; gap: 10px; margin-bottom: 7px; }
+        .terpbar-name { font-size: 11px; color: var(--muted); text-align: right; font-family: var(--font-mono); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+        .terpbar-track { height: 7px; background: var(--surface-3); border-radius: 4px; overflow: hidden; }
+        .terpbar-fill { height: 100%; border-radius: 4px; transition: width 0.6s ease; transform-origin:left; animation: growBar .6s ease; }
+        .terpbar-val { font-size: 11px; color: var(--faint); font-family: var(--font-mono); text-align:right; }
         .card-cat { padding: 0 24px 16px; }
-        .cat-badge { display: inline-block; font-size: 11px; font-weight: 600; padding: 3px 10px; border-radius: 4px; letter-spacing: 0.3px; }
-        .status-badge { display: inline-block; font-size: 10px; font-weight: 500; padding: 2px 8px; border-radius: 3px; margin-left: 8px; text-transform: uppercase; letter-spacing: 0.5px; }
+        .cat-badge { display: inline-block; font-size: 10.5px; font-weight: 500; font-family:var(--font-mono); padding: 4px 9px; border-radius: 7px; letter-spacing: 0; }
+        .status-badge { display: inline-block; font-size: 10px; font-weight: 500; font-family:var(--font-mono); padding: 4px 8px; border-radius: 6px; margin-left: 8px; text-transform: uppercase; letter-spacing: 0; }
         .card-expanded { padding: 0 24px 20px; border-top: 1px solid var(--border); margin-top: 4px; padding-top: 16px; }
         .rationale-list { list-style: none; padding: 0; }
-        .rationale-list li { font-size: 13px; color: var(--text-secondary); line-height: 1.7; padding: 3px 0; padding-left: 16px; position: relative; }
-        .rationale-list li::before { content: "→"; position: absolute; left: 0; color: var(--text-tertiary); }
+        .rationale-list li { font-size: 13px; color: var(--muted); line-height: 1.7; padding: 3px 0; padding-left: 16px; position: relative; }
+        .rationale-list li::before { content: "→"; position: absolute; left: 0; color: var(--faint); }
         .rationale-list li.warning { color: var(--red); }
         .rationale-list li.warning::before { content: "⚠"; color: var(--red); }
         .expanded-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-top: 16px; }
-        .expanded-section h5 { font-size: 12px; font-weight: 600; color: var(--accent); text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 8px; }
-        .expanded-section p { font-size: 13px; color: var(--text-secondary); line-height: 1.6; }
+        .expanded-section h5 { font-size: 9.5px; font-weight: 500; color: var(--gold); font-family:var(--font-mono); text-transform: uppercase; letter-spacing: .14em; margin-bottom: 8px; }
+        .expanded-section p { font-size: 13px; color: var(--muted); line-height: 1.6; }
         .price-grid { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 8px; margin-top: 8px; }
-        .price-cell { background: var(--bg-tertiary); padding: 8px 12px; border-radius: 6px; }
-        .price-cell .price-label { font-size: 10px; color: var(--text-tertiary); text-transform: uppercase; letter-spacing: 0.3px; }
-        .price-cell .price-val { font-size: 14px; font-weight: 600; font-family: var(--font-mono); color: var(--text-primary); margin-top: 2px; }
+        .price-cell { background: var(--surface-2); padding: 8px 12px; border-radius: 6px; }
+        .price-cell .price-label { font-size: 10px; color: var(--faint); text-transform: uppercase; letter-spacing: 0; font-family:var(--font-mono); }
+        .price-cell .price-val { font-size: 14px; font-weight: 500; font-family: var(--font-mono); color: var(--ink); margin-top: 2px; }
         .show-more-wrap { text-align: center; margin-top: 24px; }
         .lib-controls { display: flex; gap: 12px; margin-bottom: 24px; align-items: center; flex-wrap: wrap; }
-        .lib-search { background: var(--bg-card); border: 1px solid var(--border); color: var(--text-primary); padding: 10px 16px; border-radius: 8px; font-size: 14px; font-family: var(--font-main); width: 300px; outline: none; transition: border-color 0.15s; }
-        .lib-search:focus { border-color: var(--accent); }
-        .lib-search::placeholder { color: var(--text-tertiary); }
-        .lib-select { background: var(--bg-card); border: 1px solid var(--border); color: var(--text-primary); padding: 10px 14px; border-radius: 8px; font-size: 13px; font-family: var(--font-main); cursor: pointer; outline: none; }
-        .lib-select option { background: var(--bg-secondary); }
-        .lib-count { font-size: 12px; color: var(--text-tertiary); font-family: var(--font-mono); margin-left: auto; }
-        .lib-table { width: 100%; border-collapse: collapse; }
-        .lib-table th { text-align: left; font-size: 11px; font-weight: 600; color: var(--text-tertiary); text-transform: uppercase; letter-spacing: 0.5px; padding: 12px 16px; border-bottom: 1px solid var(--border); }
+        .lib-search { background: var(--surface); border: 1px solid var(--border-strong); color: var(--ink); padding: 0 14px; border-radius: 10px; font-size: 13.5px; font-family: var(--font-main); width: 300px; height:40px; outline: none; transition: border-color 0.15s; }
+        .lib-search:focus { border-color: var(--primary); }
+        .lib-search::placeholder { color: var(--faint); }
+        .lib-select { background: var(--surface); border: 1px solid var(--border-strong); color: var(--ink); padding: 0 14px; height:40px; border-radius: 10px; font-size: 13px; font-family: var(--font-main); cursor: pointer; outline: none; }
+        .lib-select option { background: var(--surface); }
+        .lib-count { font-size: 12px; color: var(--muted); font-family: var(--font-mono); margin-left: auto; }
+        .lib-table-wrap { background:var(--surface); border:1px solid var(--border); border-radius:16px; overflow:auto; box-shadow:var(--shadow); }
+        .lib-table { width: 100%; border-collapse: collapse; min-width:1060px; }
+        .lib-table th { text-align: left; font-size: 9.5px; font-weight: 500; font-family:var(--font-mono); color: var(--faint); text-transform: uppercase; letter-spacing: 0.1em; padding: 14px 16px; border-bottom: 1px solid var(--border); background:var(--surface-2); }
         .lib-table td { padding: 14px 16px; border-bottom: 1px solid var(--border); font-size: 14px; vertical-align: top; }
         .lib-table tr.clickable { cursor: pointer; }
-        .lib-table tr.clickable:hover td { background: var(--bg-card-hover); }
+        .lib-table tr.clickable:hover td { background: var(--surface-2); }
         .lib-table .name-cell { font-weight: 600; }
-        .lib-table .brand-cell { color: var(--text-secondary); font-size: 12px; }
+        .lib-table .brand-cell { color: var(--muted); font-size: 12px; }
         .lib-table .mono { font-family: var(--font-mono); font-size: 13px; }
         .lib-terp-pills { display: flex; gap: 4px; flex-wrap: wrap; }
-        .lib-terp-pill { font-size: 10px; font-family: var(--font-mono); padding: 2px 6px; border-radius: 3px; color: rgba(255,255,255,0.85); white-space: nowrap; }
-        .lib-expanded-row td { padding: 0 16px 20px; background: var(--bg-card); }
+        .lib-terp-pill { font-size: 10px; font-family: var(--font-mono); padding: 2px 6px; border-radius: 5px; white-space: nowrap; }
+        .lib-expanded-row td { padding: 0 16px 20px; background: var(--surface); }
         .lib-expanded-inner { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; padding: 16px 0; }
         .lib-expanded-inner .terpbar-row { margin-bottom: 4px; }
-        .lib-exp-section h5 { font-size: 12px; font-weight: 600; color: var(--accent); text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 8px; }
-        .lib-exp-section p { font-size: 13px; color: var(--text-secondary); line-height: 1.6; }
+        .lib-exp-section h5 { font-size: 9.5px; font-weight: 500; color: var(--gold); text-transform: uppercase; letter-spacing: .14em; font-family:var(--font-mono); margin-bottom: 8px; }
+        .lib-exp-section p { font-size: 13px; color: var(--muted); line-height: 1.6; }
         @media (max-width: 1024px) {
           .sidebar { width: 72px; }
-          .sidebar-brand h1, .sidebar-brand p, .nav-label, .sidebar-footer { display: none; }
+          .brand-prescriber, .brand-intelligence, .sidebar-brand p, .nav-label, .sidebar-footer { display: none; }
           .sidebar-brand { padding: 20px 0; text-align: center; }
           .nav-item { justify-content: center; padding: 14px; }
-          .main { margin-left: 72px; }
           .content { padding: 24px; }
           .results-grid { grid-template-columns: 1fr; }
           .expanded-grid { grid-template-columns: 1fr; }
@@ -502,38 +531,46 @@ export default function PrescriberDesktop() {
           .lib-controls { flex-direction: column; align-items: stretch; }
           .lib-search { width: 100%; }
         }
-      `}</style>
+      ` }}
+      />
 
-      <div className="shell">
+      <div className="shell" data-theme={theme}>
         <aside className="sidebar">
           <div className="sidebar-brand">
-            <h1>Prescriber Intelligence</h1>
+            <div className="brand-prescriber">Prescriber</div>
+            <div className="brand-intelligence">Intelligence</div>
             <p>Clinical Decision Support</p>
           </div>
           <nav className="sidebar-nav">
-            <div className={`nav-item ${view === "engine" ? "active" : ""}`} onClick={() => setView("engine")}>
+            <button className={`nav-item ${view === "engine" ? "active" : ""}`} onClick={() => setView("engine")}>
               <span className="nav-icon">◎</span>
               <span className="nav-label">Prescribing Engine</span>
-            </div>
-            <div className={`nav-item ${view === "library" ? "active" : ""}`} onClick={() => setView("library")}>
+            </button>
+            <button className={`nav-item ${view === "library" ? "active" : ""}`} onClick={() => setView("library")}>
               <span className="nav-icon">☰</span>
               <span className="nav-label">Product Library</span>
-            </div>
+            </button>
           </nav>
           <div className="sidebar-footer">
             <p>{strainDB.length} products indexed</p>
-            <p style={{marginTop:4}}>{strainDB.filter(s=>s.status==="tried").length} clinically verified</p>
-            <p style={{marginTop:4}}>{strainDB.filter(s=>s.cbg>0).length} with CBG data</p>
+            <p>{verifiedCount} clinically verified</p>
+            <p>{cbgCount} with CBG data</p>
           </div>
         </aside>
 
         <div className="main">
           <div className="topbar">
             <h2>{view === "engine" ? "Prescribing Engine" : "Product Library"}</h2>
-            <span className="topbar-meta">v3.2 — {strainDB.length} products · {strainDB.filter(s=>s.totalTerpenes).length} with terpene data</span>
+            <div className="topbar-right">
+              <span className="topbar-meta">v3.5.3 — {strainDB.length} products · {verifiedCount} verified</span>
+              <button className="theme-toggle" onClick={() => setTheme(t => t === "light" ? "dark" : "light")}>
+                <span>{theme === "light" ? "☾" : "☼"}</span>
+                {theme === "light" ? "Dark" : "Light"}
+              </button>
+            </div>
           </div>
 
-          <div className="content">
+          <div className={`content ${view === "library" || results ? "wide-content" : "engine-content"}`}>
             {view === "engine" && !results && (
               <>
                 <div className="step-progress">
@@ -547,6 +584,7 @@ export default function PrescriberDesktop() {
                   ))}
                 </div>
                 <div className="step-header">
+                  <div className="step-kicker">Step {step + 1} / 5</div>
                   <h3>{steps[step].title}</h3>
                   <p>{steps[step].subtitle}</p>
                 </div>
@@ -586,9 +624,10 @@ export default function PrescriberDesktop() {
                   {results.slice(0, showCount).map((strain, idx) => {
                     const top = getTopTerpenes(strain.terpenes, 4);
                     const expanded = expandedCard === idx;
-                    return (
-                      <div key={idx} className={`strain-card ${idx < 3 ? "top" : ""}`} onClick={() => setExpandedCard(expanded ? null : idx)}>
-                        <div className="card-top">
+	                    return (
+	                      <div key={idx} className={`strain-card ${idx < 3 ? "top" : ""}`} onClick={() => setExpandedCard(expanded ? null : idx)}>
+	                        {idx === 0 && <div className="top-match">Top Match</div>}
+	                        <div className="card-top">
                           <div className={`card-rank ${idx < 3 ? "gold" : ""}`}>{idx + 1}</div>
                           <div className="card-info">
                             <h4>{strain.name}</h4>
@@ -620,7 +659,7 @@ export default function PrescriberDesktop() {
                         </div>
                         <div className="card-cat">
                           <span className="cat-badge" style={{background: catBadge(strain.category) + "22", color: catBadge(strain.category)}}>{strain.category}</span>
-                          <span className="status-badge" style={{background: strain.status === "tried" ? "rgba(76,175,125,0.15)" : "rgba(255,255,255,0.06)", color: strain.status === "tried" ? "var(--green)" : "var(--text-tertiary)"}}>{strain.status === "tried" ? "✓ Verified" : "Predicted"}</span>
+	                          <span className="status-badge" style={{background: strain.status === "tried" ? "var(--verified-soft)" : "var(--surface-2)", color: strain.status === "tried" ? "var(--verified)" : "var(--faint)"}}>{strain.status === "tried" ? "✓ Verified" : "Predicted"}</span>
                         </div>
                         {expanded && (
                           <div className="card-expanded">
@@ -655,7 +694,7 @@ export default function PrescriberDesktop() {
                                     </div>
                                   </div>
                                 ) : (
-                                  <p style={{color:"var(--text-tertiary)", fontStyle:"italic"}}>Price unavailable — personal/verified product</p>
+	                                  <p style={{color:"var(--faint)", fontStyle:"italic"}}>Price unavailable — personal/verified product</p>
                                 )}
                               </div>
                             </div>
@@ -697,7 +736,8 @@ export default function PrescriberDesktop() {
                   </select>
                   <span className="lib-count">{libStrains.length} products</span>
                 </div>
-                <table className="lib-table">
+	                <div className="lib-table-wrap">
+	                <table className="lib-table">
                   <thead>
                     <tr>
                       <th>Product</th>
@@ -736,7 +776,7 @@ export default function PrescriberDesktop() {
                             </td>
                             <td><span className="cat-badge" style={{background: catBadge(s.category) + "22", color: catBadge(s.category), fontSize:11}}>{s.category}</span></td>
                             <td className="mono">{s.price ? `$${s.price.toFixed(2)}` : "—"}</td>
-                            <td><span className="status-badge" style={{background: s.status === "tried" ? "rgba(76,175,125,0.15)" : "rgba(255,255,255,0.06)", color: s.status === "tried" ? "var(--green)" : "var(--text-tertiary)"}}>{s.status === "tried" ? "✓ Verified" : "Predicted"}</span></td>
+	                            <td><span className="status-badge" style={{background: s.status === "tried" ? "var(--verified-soft)" : "var(--surface-2)", color: s.status === "tried" ? "var(--verified)" : "var(--faint)"}}>{s.status === "tried" ? "✓ Verified" : "Predicted"}</span></td>
                           </tr>
                           {isExpanded && (
                             <tr className="lib-expanded-row">
@@ -775,7 +815,8 @@ export default function PrescriberDesktop() {
                       );
                     })}
                   </tbody>
-                </table>
+	                </table>
+	                </div>
               </>
             )}
           </div>
