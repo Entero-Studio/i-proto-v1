@@ -7,14 +7,12 @@ Single-file Next.js 14 app. All logic lives in `app/page.jsx`.
 
 ## Repo & Deploy
 
-- **GitHub:** `https://github.com/Entero-Studio/i-proto-v1` (transferred from `demsone/i-proto-v1`)
-- **Remote:** `https://Entero-Studio@github.com/Entero-Studio/i-proto-v1.git`
-- **Deploy:** Vercel free tier, auto-deploys on push to `main`
-- **Push command:**
-  ```
-  git push https://Entero-Studio:TOKEN@github.com/Entero-Studio/i-proto-v1.git main
-  ```
-  Generate token at https://github.com/settings/tokens — Classic, `repo` scope.
+- **Git repo is `app/.git`, NOT the project root.** Run git from inside `app/`. `development/` and `docs/` are not version-controlled.
+- **GitHub:** `https://github.com/Entero-Studio/i-proto-v1` (transferred from `demsone/i-proto-v1`), production branch `main`.
+- **Live:** v3.2 at https://i-proto-v1-beta.vercel.app (public). Vercel team `entero-studio`, project `i-proto-v1`. Auto-deploys on push to `main`.
+- **Always `git fetch` before asserting remote/deploy state** — stale tracking refs have caused wrong conclusions.
+- **Deploy without pushing:** `development/deploy.sh` (Deploy Hook) or the Vercel CLI (installed, logged in). See `development/deploy-spec.md` for the full flow.
+- **Push:** from `app/`, `git push origin main`. Store a GitHub PAT in the macOS Keychain so no token is needed in the command.
 - **Do not** include `#` comment lines in zsh terminal commands — causes paste errors.
 
 ---
